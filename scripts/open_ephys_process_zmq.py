@@ -19,7 +19,7 @@ class OpenEphysEvent(object):
         6: 'BINARY_MSG'
         }
 
-    def __init__(self, _d, _data=None):
+    def __init__(self, _d, _data=None, _timestamp=None):
 
         self.type = None
         self.stream = ''
@@ -47,6 +47,8 @@ class OpenEphysEvent(object):
 
             dfb = np.frombuffer(self.data, dtype=np.uint64, offset=2)
             self.event_word = dfb[0]
+        if _timestamp:
+            self.timestamp = _timestamp
         if self.type == 'TIMESTAMP':
             t = np.frombuffer(self.data, dtype=np.int64)
             self.timestamp = t[0]
@@ -128,7 +130,7 @@ class OpenEphysProcess(object):
         # not sure if it will be needed actually, it may disappear
         return ()
 
-    def update_plot(self, n_arr):
+    def continuous(self, n_arr, timestamp):
         pass
 
     def on_event(self, event):
@@ -252,6 +254,8 @@ class OpenEphysProcess(object):
                         num_samples = c['num_samples']
                         channel_num = c['channel_num']
                         sample_rate = c['sample_rate']
+                        sample_num = c['sample_num']
+                        timestamp = header['timestamp']
 
                         # get the data
                         try:
@@ -274,7 +278,7 @@ class OpenEphysProcess(object):
                         if channel_num == int(self.chan_in-1):
                             n_arr = np.array(self.n_arr_buffer).T
                             if num_samples > 0:
-                                self.update_plot(n_arr)
+                                self.continuous(n_arr, timestamp)
                             
                             # reset the buffer
                             self.n_arr_buffer = []
@@ -283,7 +287,8 @@ class OpenEphysProcess(object):
 
                         if header['data_size'] > 0:
                             event = OpenEphysEvent(header['content'],
-                                                   message[2])
+                                                   message[2],
+                                                   header['timestamp'])
                         else:
                             event = OpenEphysEvent(header['content'])
 

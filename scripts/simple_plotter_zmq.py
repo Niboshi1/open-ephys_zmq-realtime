@@ -1,4 +1,5 @@
 import numpy as np
+import time
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 
@@ -24,7 +25,9 @@ class SimplePlotter(OpenEphysProcess):
         self.frame_count = 0
         self.frame_max = 0
         self.sampling_rate = sampling_rate
+        self.buffer_max = int(self.plotting_interval/1000*self.sampling_rate)
         self.app_name = "Simple Plotter"
+        self.continuous_elapsed = 0
 
         # matplotlib members, initialized to None
         self.ax = None
@@ -70,10 +73,14 @@ class SimplePlotter(OpenEphysProcess):
         chan_labels = list(range(32))
         return ("int_set", "chan_in", chan_labels),
 
-    def update_plot(self, n_arr, plot_chan=0):
-        self.buffer_max = int(self.plotting_interval/1000*self.sampling_rate)
+    def continuous(self, n_arr, timestamp):
+        self.update_plot(n_arr, timestamp)
+
+    def on_event(self, event):
+        pass
+
+    def update_plot(self, n_arr, timestamp, plot_chan=0):
         # setting up frame dependent parameters
-        self.num_samples = int(n_arr.shape[0])
         events = []
 
         # increment the buffer
@@ -81,6 +88,10 @@ class SimplePlotter(OpenEphysProcess):
 
         # update the plot once the buffer is full
         if len(self.y) > self.buffer_max:
+            # print update time
+            self.print_log("time: " + str(time.time()-self.continuous_elapsed), 'INFO_BLUE')
+            self.continuous_elapsed = time.time()
+
             # update the plot
             y = self.y[:self.buffer_max]
             x = np.arange(len(y), dtype=np.float32) * 1000. / self.sampling_rate
