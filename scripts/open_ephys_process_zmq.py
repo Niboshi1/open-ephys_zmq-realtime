@@ -127,11 +127,11 @@ class OpenEphysProcess(object):
     def update_plot(self, n_arr):
         pass
 
-    def update_plot_event(self, event):
+    def on_event_received(self, event):
         print(event)
 
     # noinspection PyMethodMayBeStatic
-    def update_plot_spike(self, spike):
+    def on_spike_event(self, spike):
         print(spike)
 
     def send_heartbeat(self):
@@ -275,12 +275,12 @@ class OpenEphysProcess(object):
                         else:
                             event = OpenEphysEvent(header['content'])
 
-                        self.update_plot_event(event)
+                        self.on_event_received(event)
 
                     elif header['type'] == 'spike':
                         spike = OpenEphysSpikeEvent(header['spike'],
                                                     message[2])
-                        self.update_plot_spike(spike)
+                        self.on_spike_event(spike)
 
                     elif header['type'] == 'param':
                         c = header['content']
