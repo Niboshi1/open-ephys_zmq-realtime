@@ -30,6 +30,7 @@ class OpenEphysEvent(object):
         self.event_word = 0
         self.numBytes = 0
         self.data = b''
+
         self.__dict__.update(_d)
         self.timestamp = None
         # noinspection PyTypeChecker
@@ -84,6 +85,9 @@ class OpenEphysSpikeEvent(object):
 class OpenEphysProcess(object):
     def __init__(self, ):
         # keep this slot for multiprocessing related initialization if needed
+        self.n_arr_buffer = []
+        self.chan_in = 0
+
         self.context = zmq.Context()
         self.data_socket = None
         self.event_socket = None
@@ -127,8 +131,8 @@ class OpenEphysProcess(object):
     def update_plot(self, n_arr):
         pass
 
-    def on_event_received(self, event):
-        print(event)
+    def on_event(self, event):
+        self.print_log(event, 'INFO_BLUE')
 
     # noinspection PyMethodMayBeStatic
     def on_spike_event(self, spike):
@@ -196,6 +200,7 @@ class OpenEphysProcess(object):
         # so that Open Ephys knows we're alive
 
         if self.isTesting:
+            # randomly send a TTL event
             if np.random.random() < 0.005:
                 self.send_event(event_type=3, sample_num=0,
                                 event_id=self.event_no, event_channel=1)
@@ -248,24 +253,31 @@ class OpenEphysProcess(object):
                         channel_num = c['channel_num']
                         sample_rate = c['sample_rate']
 
-                        if channel_num == 1: # this number decides the channel to plot
-                            try:
-                                n_arr = np.frombuffer(message[2],
-                                                      dtype=np.float32)
-                                n_arr = np.reshape(n_arr, num_samples)
+                        # get the data
+                        try:
+                            n_arr = np.frombuffer(message[2],
+                                                    dtype=np.float32)
+                            n_arr = np.reshape(n_arr, num_samples)
+                            self.n_arr_buffer.append(n_arr)
 
-                                if num_samples > 0:
-                                    self.update_plot(n_arr)
+                        except IndexError as e:
+                            self.print_log(f"{e}", 'ERR')
+                            self.print_log(f"{header}", 'ERR')
+                            self.print_log(f"{message[1]}", 'ERR')
 
-                            except IndexError as e:
-                                self.print_log(f"{e}", 'ERR')
-                                self.print_log(f"{header}", 'ERR')
-                                self.print_log(f"{message[1]}", 'ERR')
+                            if len(message) > 2:
+                                self.print_log(f"{len(message[2])}", 'ERR')
+                            else:
+                                self.print_log("only one frame???", 'ERR')
 
-                                if len(message) > 2:
-                                    self.print_log(f"{len(message[2])}", 'ERR')
-                                else:
-                                    self.print_log("only one frame???", 'ERR')
+                        # update the plot when the last channel is received
+                        if channel_num == int(self.chan_in-1):
+                            n_arr = np.array(self.n_arr_buffer).T
+                            if num_samples > 0:
+                                self.update_plot(n_arr)
+                            
+                            # reset the buffer
+                            self.n_arr_buffer = []
 
                     elif header['type'] == 'event':
 
@@ -275,7 +287,7 @@ class OpenEphysProcess(object):
                         else:
                             event = OpenEphysEvent(header['content'])
 
-                        self.on_event_received(event)
+                        self.on_event(event)
 
                     elif header['type'] == 'spike':
                         spike = OpenEphysSpikeEvent(header['spike'],
@@ -295,7 +307,7 @@ class OpenEphysProcess(object):
             elif self.event_socket in socks and self.socket_waits_reply:
                 message = self.event_socket.recv()
                 #self.print_log("event reply received", 'INFO_GREEN')
-                self.print_log(f"{message}", 'INFO_GREEN')
+                self.print_log(f"OpenEphys GUI: {message}", 'INFO_GREEN')
                 if self.socket_waits_reply:
                     self.socket_waits_reply = False
 
