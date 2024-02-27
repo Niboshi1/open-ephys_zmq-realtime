@@ -20,6 +20,9 @@ class SimplePlotter(OpenEphysProcess):
 
         super(SimplePlotter, self).__init__()
         self.y = np.empty(0, dtype=np.float32)  # the buffer for the data
+        self.x = np.empty(0, dtype=np.float64)  # the buffer for the timestamps
+        self.ttl_timestamps = []
+
         self.chan_in = 32
         self.plotting_interval = 1000.  # in ms
         self.frame_count = 0
@@ -59,6 +62,7 @@ class SimplePlotter(OpenEphysProcess):
         self.hl, = self.ax.plot([], [])
         self.hl.set_color('#d92eab')
         self.hl.set_linewidth(0.5)
+        self.lver = self.ax.axvline(color='white')
         self.ax.set_autoscaley_on(True)
         self.ax.margins(y=0.1)
         self.ax.set_xlim(0., 1)
@@ -77,7 +81,8 @@ class SimplePlotter(OpenEphysProcess):
         self.update_plot(n_arr, timestamp)
 
     def on_event(self, event):
-        pass
+        self.ttl_timestamps.append(event.timestamp)
+        time.sleep(1)
 
     def update_plot(self, n_arr, timestamp, plot_chan=0):
         # setting up frame dependent parameters
@@ -85,6 +90,10 @@ class SimplePlotter(OpenEphysProcess):
 
         # increment the buffer
         self.y = np.append(self.y, n_arr[:, plot_chan])
+
+        # increment the timestamp buffer
+        buffer_size_ms = n_arr.shape[0] * 1000. / self.sampling_rate
+        self.x = np.append(self.x, np.linspace(timestamp, timestamp + buffer_size_ms, n_arr.shape[0], dtype=np.float64))
 
         # update the plot once the buffer is full
         if len(self.y) > self.buffer_max:
@@ -94,10 +103,29 @@ class SimplePlotter(OpenEphysProcess):
 
             # update the plot
             y = self.y[:self.buffer_max]
+            x_real = self.x[:self.buffer_max]
+
+            # search for ttl events in the buffer
+            ttl_timestamps = []
+            for ts in self.ttl_timestamps:
+                if ts > x_real[0] and ts < x_real[-1]:
+                    # find the closest index of the timestamp in x_real
+                    idx = np.where(x_real > ts)[0][0]
+                    ttl_timestamps.append(idx)
+                    # delete the timestamp from the list
+                    self.ttl_timestamps.remove(ts)
+
             x = np.arange(len(y), dtype=np.float32) * 1000. / self.sampling_rate
             self.hl.set_ydata(y)
             self.hl.set_xdata(x)
-            #print ("shape(x): ", x.shape, " shape(y): ", y.shape, " min:", np.min(y), " max:", np.max(y) )
+
+            # add vertical lines for the ttl events
+            # clear the previous vertical lines
+            if len(ttl_timestamps) == 0:
+                self.lver.set_xdata(-1)
+            else:
+                for idx in ttl_timestamps:
+                    self.lver.set_xdata(x[idx])
             self.ax.set_xlim(0., self.plotting_interval)
             self.ax.relim()
             self.ax.autoscale_view(True, True, False)
@@ -105,6 +133,7 @@ class SimplePlotter(OpenEphysProcess):
             self.figure.canvas.flush_events()
 
             self.y = self.y[self.buffer_max:]
+            self.x = self.x[self.buffer_max:]
 
         # if np.random.random() < 0.5:
         #     events.append({'type': 3, 'sampleNum': 0, 'eventId': self.code})
